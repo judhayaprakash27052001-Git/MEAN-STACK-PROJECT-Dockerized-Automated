@@ -1,0 +1,76 @@
+\
+    name: CI/CD - Build and Deploy
+
+    on:
+      push:
+        branches: [ main ]
+
+    env:
+      IMAGE_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/mean-backend
+      IMAGE_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/mean-frontend
+      DOCKER_TAG: latest
+
+    jobs:
+      build-and-push:
+        name: Build and push images
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v4
+
+          - name: Set up QEMU
+            uses: docker/setup-qemu-action@v2
+
+          - name: Set up Docker Buildx
+            uses: docker/setup-buildx-action@v2
+
+          - name: Login to DockerHub
+            uses: docker/login-action@v2
+            with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+          - name: Build and push backend image
+            uses: docker/build-push-action@v4
+            with:
+              context: ./backend
+              file: ./backend/Dockerfile
+              push: true
+              tags: ${{ env.IMAGE_BACKEND }}:${{ env.DOCKER_TAG }}
+
+          - name: Build and push frontend image
+            uses: docker/build-push-action@v4
+            with:
+              context: ./frontend
+              file: ./frontend/Dockerfile
+              push: true
+              tags: ${{ env.IMAGE_FRONTEND }}:${{ env.DOCKER_TAG }}
+
+      deploy:
+        name: Deploy to VM via SSH
+        needs: build-and-push
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v4
+
+          - name: Install SSH client
+            run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+          - name: Deploy - Pull images and restart compose
+            uses: appleboy/ssh-action@v0.1.7
+            with:
+              host: ${{ secrets.SSH_HOST }}
+              username: ${{ secrets.SSH_USER }}
+              key: ${{ secrets.SSH_PRIVATE_KEY }}
+              script: |
+                cd ~/app || mkdir -p ~/app && cd ~/app
+                # fetch latest docker-compose.yml from repo
+                curl -sL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
+                # create .env for compose (optional)
+                cat > .env <<'EOF'
+                DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+                DOCKERHUB_TOKEN=${{ secrets.DOCKERHUB_TOKEN }}
+                EOF
+                docker compose pull
+                docker compose up -d --remove-orphans

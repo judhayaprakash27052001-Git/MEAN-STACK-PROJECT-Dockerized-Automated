@@ -164,6 +164,3 @@ On your cloud server (AWS EC2 / DigitalOcean / Azure):
 └── README.md
 ```
 
-### Next Steps for you
-
-Would you like me to write the content for the specific `frontend.conf` or the `ci-cd.yml` file to ensure the syntax matches exactly what is described in this README?
